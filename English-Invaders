@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Simple Invaders</title>
+    <style>
+        body { background: #222; color: white; text-align: center; font-family: sans-serif; }
+        canvas { background: #000; display: block; margin: 20px auto; border: 4px solid #555; }
+        .info { font-size: 1.2rem; }
+    </style>
+</head>
+<body>
+    <h1>SPACE INVADERS</h1>
+    <div class="info">Score: <span id="score">0</span></div>
+    <canvas id="gameCanvas" width="600" height="400"></canvas>
+    <p>操作: [←][→] 移動 / [Space] 発射</p>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const scoreEl = document.getElementById("score");
+
+        // 設定
+        let score = 0;
+        const player = { x: 280, y: 360, w: 40, h: 20, speed: 5 };
+        const bullets = [];
+        const enemies = [];
+        const enemyRows = 3;
+        const enemyCols = 8;
+        let enemyDirection = 1;
+        let enemyStepY = false;
+
+        // 敵の初期化
+        for (let r = 0; r < enemyRows; r++) {
+            for (let c = 0; c < enemyCols; c++) {
+                enemies.push({ x: c * 60 + 50, y: r * 40 + 50, w: 30, h: 20 });
+            }
+        }
+
+        // キー入力
+        const keys = {};
+        document.addEventListener("keydown", (e) => keys[e.code] = true);
+        document.addEventListener("keyup", (e) => keys[e.code] = false);
+
+        function update() {
+            // 自機の移動
+            if (keys["ArrowLeft"] && player.x > 0) player.x -= player.speed;
+            if (keys["ArrowRight"] && player.x < canvas.width - player.w) player.x += player.speed;
+            
+            // 弾の発射 (スペースキーかつ画面に弾が少ない時)
+            if (keys["Space"] && bullets.length < 3) {
+                bullets.push({ x: player.x + player.w/2 - 2, y: player.y, w: 4, h: 10 });
+                keys["Space"] = false; // 連射防止
+            }
+
+            // 弾の移動と当たり判定
+            bullets.forEach((b, bi) => {
+                b.y -= 7;
+                if (b.y < 0) bullets.splice(bi, 1);
+
+                enemies.forEach((en, ei) => {
+                    if (b.x < en.x + en.w && b.x + b.w > en.x && b.y < en.y + en.h && b.y + b.h > en.y) {
+                        enemies.splice(ei, 1);
+                        bullets.splice(bi, 1);
+                        score += 10;
+                        scoreEl.innerText = score;
+                    }
+                });
+            });
+
+            // 敵の移動
+            let edge = false;
+            enemies.forEach(en => {
+                en.x += 1 * enemyDirection;
+                if (en.x <= 0 || en.x + en.w >= canvas.width) edge = true;
+            });
+
+            if (edge) {
+                enemyDirection *= -1;
+                enemies.forEach(en => en.y += 20);
+            }
+
+            // ゲームオーバー判定
+            enemies.forEach(en => {
+                if (en.y + en.h > player.y) location.reload(); // リセット
+            });
+            if (enemies.length === 0) {
+                alert("CLEAR!");
+                location.reload();
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 自機 (緑)
+            ctx.fillStyle = "#0f0";
+            ctx.fillRect(player.x, player.y, player.w, player.h);
+
+            // 弾 (白)
+            ctx.fillStyle = "#fff";
+            bullets.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
+
+            // 敵 (赤)
+            ctx.fillStyle = "#f00";
+            enemies.forEach(en => ctx.fillRect(en.x, en.y, en.w, en.h));
+
+            update();
+            requestAnimationFrame(draw);
+        }
+
+        draw();
+    </script>
+</body>
+</html>
