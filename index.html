@@ -2,113 +2,144 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Simple Invaders</title>
+    <title>English Pronunciation Invaders</title>
     <style>
-        body { background: #222; color: white; text-align: center; font-family: sans-serif; }
-        canvas { background: #000; display: block; margin: 20px auto; border: 4px solid #555; }
-        .info { font-size: 1.2rem; }
+        body { background: #1a1a2e; color: #fff; text-align: center; font-family: 'Arial', sans-serif; overflow: hidden; }
+        canvas { background: #000; display: block; margin: 10px auto; border: 3px solid #4ecca3; box-shadow: 0 0 20px rgba(78, 204, 163, 0.5); }
+        .ui { font-size: 1.2rem; margin-bottom: 10px; color: #4ecca3; }
+        .word-hint { font-size: 1.5rem; color: #ff4b2b; font-weight: bold; }
     </style>
 </head>
 <body>
-    <h1>SPACE INVADERS</h1>
-    <div class="info">Score: <span id="score">0</span></div>
-    <canvas id="gameCanvas" width="600" height="400"></canvas>
-    <p>操作: [←][→] 移動 / [Space] 発射</p>
+    <h1>PRONUNCIATION SHOOTER</h1>
+    <div class="ui">Score: <span id="score">0</span> | <span id="status">Microphone: Loading...</span></div>
+    <div class="word-hint">画面の英単語を叫べ！</div>
+    <canvas id="gameCanvas" width="800" height="500"></canvas>
+    <p>マイクを許可して、敵の英単語を正しく発音すると自動で攻撃します。</p>
 
     <script>
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
         const scoreEl = document.getElementById("score");
+        const statusEl = document.getElementById("status");
 
-        // 設定
         let score = 0;
-        const player = { x: 280, y: 360, w: 40, h: 20, speed: 5 };
+        const player = { x: 380, y: 450, w: 40, h: 20 };
         const bullets = [];
         const enemies = [];
-        const enemyRows = 3;
-        const enemyCols = 8;
-        let enemyDirection = 1;
-        let enemyStepY = false;
+        const words = ["Apple", "Blue", "Cat", "Dog", "Egg", "Fish", "Good", "Home"];
 
-        // 敵の初期化
-        for (let r = 0; r < enemyRows; r++) {
-            for (let c = 0; c < enemyCols; c++) {
-                enemies.push({ x: c * 60 + 50, y: r * 40 + 50, w: 30, h: 20 });
+        // 敵の生成（単語付き）
+        function initEnemies() {
+            for (let r = 0; r < 3; r++) {
+                for (let c = 0; c < 6; c++) {
+                    const word = words[Math.floor(Math.random() * words.length)];
+                    enemies.push({
+                        x: c * 100 + 100,
+                        y: r * 60 + 50,
+                        w: 60,
+                        h: 30,
+                        word: word.toLowerCase(),
+                        displayWord: word
+                    });
+                }
             }
         }
+        initEnemies();
 
-        // キー入力
-        const keys = {};
-        document.addEventListener("keydown", (e) => keys[e.code] = true);
-        document.addEventListener("keyup", (e) => keys[e.code] = false);
+        // --- 音声認識のセットアップ ---
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            statusEl.innerText = "Error: Browser not supported";
+        } else {
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'en-US';
+            recognition.continuous = true;
+            recognition.interimResults = false;
 
-        function update() {
-            // 自機の移動
-            if (keys["ArrowLeft"] && player.x > 0) player.x -= player.speed;
-            if (keys["ArrowRight"] && player.x < canvas.width - player.w) player.x += player.speed;
+            recognition.onstart = () => statusEl.innerText = "Status: Listening... (Say a word!)";
+            recognition.onerror = () => statusEl.innerText = "Status: Mic Error";
             
-            // 弾の発射 (スペースキーかつ画面に弾が少ない時)
-            if (keys["Space"] && bullets.length < 3) {
-                bullets.push({ x: player.x + player.w/2 - 2, y: player.y, w: 4, h: 10 });
-                keys["Space"] = false; // 連射防止
-            }
-
-            // 弾の移動と当たり判定
-            bullets.forEach((b, bi) => {
-                b.y -= 7;
-                if (b.y < 0) bullets.splice(bi, 1);
-
-                enemies.forEach((en, ei) => {
-                    if (b.x < en.x + en.w && b.x + b.w > en.x && b.y < en.y + en.h && b.y + b.h > en.y) {
-                        enemies.splice(ei, 1);
-                        bullets.splice(bi, 1);
-                        score += 10;
-                        scoreEl.innerText = score;
+            recognition.onresult = (event) => {
+                const speechResult = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
+                console.log("Detected:", speechResult);
+                
+                // 発音された単語と一致する敵を狙い撃ち
+                enemies.forEach((en, index) => {
+                    if (speechResult.includes(en.word)) {
+                        fireBulletAt(en);
                     }
                 });
+            };
+            recognition.start();
+        }
+
+        function fireBulletAt(enemy) {
+            bullets.push({
+                x: player.x + player.w / 2,
+                y: player.y,
+                targetX: enemy.x + enemy.w / 2,
+                targetY: enemy.y + enemy.h / 2,
+                speed: 10,
+                active: true,
+                targetEnemy: enemy
+            });
+        }
+
+        function update() {
+            // 弾の移動と命中判定
+            bullets.forEach((b, bi) => {
+                const dx = b.targetX - b.x;
+                const dy = b.targetY - b.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist < 10) {
+                    const ei = enemies.indexOf(b.targetEnemy);
+                    if (ei > -1) {
+                        enemies.splice(ei, 1);
+                        score += 100;
+                        scoreEl.innerText = score;
+                    }
+                    bullets.splice(bi, 1);
+                } else {
+                    b.x += (dx / dist) * b.speed;
+                    b.y += (dy / dist) * b.speed;
+                }
             });
 
-            // 敵の移動
-            let edge = false;
-            enemies.forEach(en => {
-                en.x += 1 * enemyDirection;
-                if (en.x <= 0 || en.x + en.w >= canvas.width) edge = true;
-            });
-
-            if (edge) {
-                enemyDirection *= -1;
-                enemies.forEach(en => en.y += 20);
-            }
-
-            // ゲームオーバー判定
-            enemies.forEach(en => {
-                if (en.y + en.h > player.y) location.reload(); // リセット
-            });
-            if (enemies.length === 0) {
-                alert("CLEAR!");
-                location.reload();
-            }
+            if (enemies.length === 0) initEnemies(); // 全滅したら次
         }
 
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // 自機 (緑)
-            ctx.fillStyle = "#0f0";
+            // 自機
+            ctx.fillStyle = "#4ecca3";
             ctx.fillRect(player.x, player.y, player.w, player.h);
 
-            // 弾 (白)
-            ctx.fillStyle = "#fff";
-            bullets.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
+            // 敵と単語
+            enemies.forEach(en => {
+                ctx.fillStyle = "#ff4b2b";
+                ctx.fillRect(en.x, en.y, en.w, en.h);
+                ctx.fillStyle = "#fff";
+                ctx.font = "16px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText(en.displayWord, en.x + en.w / 2, en.y - 5);
+            });
 
-            // 敵 (赤)
-            ctx.fillStyle = "#f00";
-            enemies.forEach(en => ctx.fillRect(en.x, en.y, en.w, en.h));
+            // 弾
+            ctx.strokeStyle = "#ffff00";
+            ctx.lineWidth = 3;
+            bullets.forEach(b => {
+                ctx.beginPath();
+                ctx.moveTo(b.x, b.y);
+                ctx.lineTo(b.x, b.y - 10);
+                ctx.stroke();
+            });
 
             update();
             requestAnimationFrame(draw);
         }
-
         draw();
     </script>
 </body>
