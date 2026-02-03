@@ -2,145 +2,107 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>English Pronunciation Invaders</title>
+    <title>Street Helper - English Practice</title>
     <style>
-        body { background: #1a1a2e; color: #fff; text-align: center; font-family: 'Arial', sans-serif; overflow: hidden; }
-        canvas { background: #000; display: block; margin: 10px auto; border: 3px solid #4ecca3; box-shadow: 0 0 20px rgba(78, 204, 163, 0.5); }
-        .ui { font-size: 1.2rem; margin-bottom: 10px; color: #4ecca3; }
-        .word-hint { font-size: 1.5rem; color: #ff4b2b; font-weight: bold; }
+        body { background: #f0f2f5; color: #333; font-family: 'Segoe UI', sans-serif; text-align: center; margin: 0; }
+        #game-container { max-width: 800px; margin: 20px auto; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        #situation-box { height: 200px; display: flex; align-items: center; justify-content: center; font-size: 5rem; background: #eef2f3; border-radius: 10px; margin-bottom: 20px; }
+        #instruction { font-size: 1.2rem; font-weight: bold; color: #555; margin-bottom: 10px; }
+        #target-phrase { font-size: 1.8rem; color: #007bff; margin: 20px 0; min-height: 2.5rem; font-weight: bold; }
+        #feedback { font-size: 1.2rem; height: 1.5rem; margin-top: 10px; }
+        .mic-active { color: #dc3545; font-weight: bold; animation: blink 1s infinite; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        button { padding: 10px 30px; font-size: 1.2rem; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 5px; }
     </style>
 </head>
 <body>
-    <h1>PRONUNCIATION SHOOTER</h1>
-    <div class="ui">Score: <span id="score">0</span> | <span id="status">Microphone: Loading...</span></div>
-    <div class="word-hint">画面の英単語を叫べ！</div>
-    <canvas id="gameCanvas" width="800" height="500"></canvas>
-    <p>マイクを許可して、敵の英単語を正しく発音すると自動で攻撃します。</p>
 
-    <script>
-        const canvas = document.getElementById("gameCanvas");
-        const ctx = canvas.getContext("2d");
-        const scoreEl = document.getElementById("score");
-        const statusEl = document.getElementById("status");
+<div id="game-container">
+    <h1>Street Helper</h1>
+    <p>困っている人を助けるために、適切なフレーズを発音しよう！</p>
+    
+    <div id="situation-box">👤</div>
+    <div id="instruction">この人に声をかけよう：</div>
+    <div id="target-phrase">Ready?</div>
+    
+    <div id="feedback"></div>
+    <button id="start-btn">ゲーム開始 / マイク起動</button>
+    
+    <div style="margin-top: 30px; color: #888;">
+        <p>Status: <span id="status">Wait for start...</span></p>
+        <p>Your Voice: <span id="user-speech">...</span></p>
+    </div>
+</div>
 
-        let score = 0;
-        const player = { x: 380, y: 450, w: 40, h: 20 };
-        const bullets = [];
-        const enemies = [];
-        const words = ["Apple", "Blue", "Cat", "Dog", "Egg", "Fish", "Good", "Home"];
+<script>
+    const situationBox = document.getElementById('situation-box');
+    const targetPhraseEl = document.getElementById('target-phrase');
+    const feedbackEl = document.getElementById('feedback');
+    const userSpeechEl = document.getElementById('user-speech');
+    const statusEl = document.getElementById('status');
+    const startBtn = document.getElementById('start-btn');
 
-        // 敵の生成（単語付き）
-        function initEnemies() {
-            for (let r = 0; r < 3; r++) {
-                for (let c = 0; c < 6; c++) {
-                    const word = words[Math.floor(Math.random() * words.length)];
-                    enemies.push({
-                        x: c * 100 + 100,
-                        y: r * 60 + 50,
-                        w: 60,
-                        h: 30,
-                        word: word.toLowerCase(),
-                        displayWord: word
-                    });
-                }
-            }
+    // トラブルのシチュエーションリスト
+    const scenarios = [
+        { emoji: "🗺️", hint: "道に迷っている人に：", phrase: "May I help you?" },
+        { emoji: "🎒", hint: "荷物が重そうな人に：", phrase: "Shall I carry your bag?" },
+        { emoji: "☕", hint: "注文を間違えられた客に：", phrase: "I think this is not what she ordered." },
+        { emoji: "🚉", hint: "駅を探している人に：", phrase: "The station is just around the corner." },
+        { emoji: "📸", hint: "写真を撮ってほしそうな人に：", phrase: "Would you like me to take a photo?" }
+    ];
+
+    let currentIdx = 0;
+
+    // 音声認識の設定
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+
+    function nextScenario() {
+        if (currentIdx >= scenarios.length) {
+            targetPhraseEl.innerText = "All Clear! Good job!";
+            situationBox.innerText = "🎉";
+            return;
         }
-        initEnemies();
+        const s = scenarios[currentIdx];
+        situationBox.innerText = s.emoji;
+        document.getElementById('instruction').innerText = s.hint;
+        targetPhraseEl.innerText = s.phrase;
+        feedbackEl.innerText = "";
+        feedbackEl.style.color = "black";
+    }
 
-        // --- 音声認識のセットアップ ---
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-            statusEl.innerText = "Error: Browser not supported";
+    startBtn.onclick = () => {
+        recognition.start();
+        statusEl.innerText = "Listening...";
+        statusEl.className = "mic-active";
+    };
+
+    recognition.onresult = (event) => {
+        const speech = event.results[0][0].transcript.toLowerCase().replace(/[.,?!]/g, "");
+        const target = scenarios[currentIdx].phrase.toLowerCase().replace(/[.,?!]/g, "");
+        
+        userSpeechEl.innerText = speech;
+        
+        // 判定ロジック（完全に一致しなくても、含まれていればOKにする）
+        if (speech.includes(target) || target.includes(speech)) {
+            feedbackEl.innerText = "Excellent! You helped them! ✅";
+            feedbackEl.style.color = "green";
+            currentIdx++;
+            setTimeout(nextScenario, 2000);
         } else {
-            const recognition = new SpeechRecognition();
-            recognition.lang = 'en-US';
-            recognition.continuous = true;
-            recognition.interimResults = false;
-
-            recognition.onstart = () => statusEl.innerText = "Status: Listening... (Say a word!)";
-            recognition.onerror = () => statusEl.innerText = "Status: Mic Error";
-            
-            recognition.onresult = (event) => {
-                const speechResult = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
-                console.log("Detected:", speechResult);
-                
-                // 発音された単語と一致する敵を狙い撃ち
-                enemies.forEach((en, index) => {
-                    if (speechResult.includes(en.word)) {
-                        fireBulletAt(en);
-                    }
-                });
-            };
-            recognition.start();
+            feedbackEl.innerText = "Pardon? Try again. ❌";
+            feedbackEl.style.color = "red";
         }
+    };
 
-        function fireBulletAt(enemy) {
-            bullets.push({
-                x: player.x + player.w / 2,
-                y: player.y,
-                targetX: enemy.x + enemy.w / 2,
-                targetY: enemy.y + enemy.h / 2,
-                speed: 10,
-                active: true,
-                targetEnemy: enemy
-            });
-        }
+    recognition.onend = () => {
+        statusEl.innerText = "Stopped (Click button to talk again)";
+        statusEl.className = "";
+    };
 
-        function update() {
-            // 弾の移動と命中判定
-            bullets.forEach((b, bi) => {
-                const dx = b.targetX - b.x;
-                const dy = b.targetY - b.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                
-                if (dist < 10) {
-                    const ei = enemies.indexOf(b.targetEnemy);
-                    if (ei > -1) {
-                        enemies.splice(ei, 1);
-                        score += 100;
-                        scoreEl.innerText = score;
-                    }
-                    bullets.splice(bi, 1);
-                } else {
-                    b.x += (dx / dist) * b.speed;
-                    b.y += (dy / dist) * b.speed;
-                }
-            });
-
-            if (enemies.length === 0) initEnemies(); // 全滅したら次
-        }
-
-        function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // 自機
-            ctx.fillStyle = "#4ecca3";
-            ctx.fillRect(player.x, player.y, player.w, player.h);
-
-            // 敵と単語
-            enemies.forEach(en => {
-                ctx.fillStyle = "#ff4b2b";
-                ctx.fillRect(en.x, en.y, en.w, en.h);
-                ctx.fillStyle = "#fff";
-                ctx.font = "16px Arial";
-                ctx.textAlign = "center";
-                ctx.fillText(en.displayWord, en.x + en.w / 2, en.y - 5);
-            });
-
-            // 弾
-            ctx.strokeStyle = "#ffff00";
-            ctx.lineWidth = 3;
-            bullets.forEach(b => {
-                ctx.beginPath();
-                ctx.moveTo(b.x, b.y);
-                ctx.lineTo(b.x, b.y - 10);
-                ctx.stroke();
-            });
-
-            update();
-            requestAnimationFrame(draw);
-        }
-        draw();
-    </script>
+    nextScenario();
+</script>
 </body>
 </html>
