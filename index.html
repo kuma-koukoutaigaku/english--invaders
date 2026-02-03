@@ -2,107 +2,110 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Street Helper - English Practice</title>
+    <title>Voice Assembler</title>
     <style>
-        body { background: #f0f2f5; color: #333; font-family: 'Segoe UI', sans-serif; text-align: center; margin: 0; }
-        #game-container { max-width: 800px; margin: 20px auto; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
-        #situation-box { height: 200px; display: flex; align-items: center; justify-content: center; font-size: 5rem; background: #eef2f3; border-radius: 10px; margin-bottom: 20px; }
-        #instruction { font-size: 1.2rem; font-weight: bold; color: #555; margin-bottom: 10px; }
-        #target-phrase { font-size: 1.8rem; color: #007bff; margin: 20px 0; min-height: 2.5rem; font-weight: bold; }
-        #feedback { font-size: 1.2rem; height: 1.5rem; margin-top: 10px; }
-        .mic-active { color: #dc3545; font-weight: bold; animation: blink 1s infinite; }
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-        button { padding: 10px 30px; font-size: 1.2rem; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 5px; }
+        body { background: #1a1a1a; color: #00ffcc; font-family: 'Courier New', monospace; text-align: center; }
+        #game-box { max-width: 600px; margin: 50px auto; border: 2px solid #00ffcc; padding: 30px; border-radius: 20px; box-shadow: 0 0 20px #00ffcc; }
+        .choice-container { display: flex; justify-content: space-around; margin: 20px 0; }
+        .choice { border: 1px solid #00ffcc; padding: 10px; border-radius: 10px; opacity: 0.5; font-size: 1.2rem; }
+        .active { opacity: 1; border-width: 3px; background: rgba(0, 255, 204, 0.1); }
+        #assembled-sentence { font-size: 1.5rem; color: #ffcc00; min-height: 2rem; margin: 30px 0; border-bottom: 1px dashed #ffcc00; }
+        button { background: #00ffcc; color: #1a1a1a; border: none; padding: 15px 30px; font-weight: bold; cursor: pointer; border-radius: 5px; }
+        #status { color: #ff3366; margin-top: 10px; }
     </style>
 </head>
 <body>
 
-<div id="game-container">
-    <h1>Street Helper</h1>
-    <p>困っている人を助けるために、適切なフレーズを発音しよう！</p>
+<div id="game-box">
+    <h1>VOICE ASSEMBLER</h1>
+    <p id="step-hint">Step 1: 主語を声で選べ！</p>
     
-    <div id="situation-box">👤</div>
-    <div id="instruction">この人に声をかけよう：</div>
-    <div id="target-phrase">Ready?</div>
+    <div class="choice-container" id="choices">
+        </div>
+
+    <div id="assembled-sentence">... waiting ...</div>
     
-    <div id="feedback"></div>
-    <button id="start-btn">ゲーム開始 / マイク起動</button>
-    
-    <div style="margin-top: 30px; color: #888;">
-        <p>Status: <span id="status">Wait for start...</span></p>
-        <p>Your Voice: <span id="user-speech">...</span></p>
-    </div>
+    <button id="mic-btn">🎙 マイク起動</button>
+    <div id="status">Ready</div>
+    <p style="font-size: 0.8rem; color: #888;">※ 認識された言葉: <span id="user-speech">-</span></p>
 </div>
 
 <script>
-    const situationBox = document.getElementById('situation-box');
-    const targetPhraseEl = document.getElementById('target-phrase');
-    const feedbackEl = document.getElementById('feedback');
-    const userSpeechEl = document.getElementById('user-speech');
-    const statusEl = document.getElementById('status');
-    const startBtn = document.getElementById('start-btn');
-
-    // トラブルのシチュエーションリスト
-    const scenarios = [
-        { emoji: "🗺️", hint: "道に迷っている人に：", phrase: "May I help you?" },
-        { emoji: "🎒", hint: "荷物が重そうな人に：", phrase: "Shall I carry your bag?" },
-        { emoji: "☕", hint: "注文を間違えられた客に：", phrase: "I think this is not what she ordered." },
-        { emoji: "🚉", hint: "駅を探している人に：", phrase: "The station is just around the corner." },
-        { emoji: "📸", hint: "写真を撮ってほしそうな人に：", phrase: "Would you like me to take a photo?" }
+    const steps = [
+        { name: "主語", options: ["I", "My teacher", "A hungry dog"] },
+        { name: "動詞", options: ["bought", "stole", "is dancing with"] },
+        { name: "目的語", options: ["a heavy chair", "your smartphone", "a giant pizza"] },
+        { name: "場所/時", options: ["at school", "in the rain", "at midnight"] }
     ];
 
-    let currentIdx = 0;
+    let currentStep = 0;
+    let builtSentence = [];
 
-    // 音声認識の設定
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
+    const choicesEl = document.getElementById('choices');
+    const sentenceEl = document.getElementById('assembled-sentence');
+    const stepHintEl = document.getElementById('step-hint');
+    const statusEl = document.getElementById('status');
+    const userSpeechEl = document.getElementById('user-speech');
+
+    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
     recognition.lang = 'en-US';
-    recognition.interimResults = false;
 
-    function nextScenario() {
-        if (currentIdx >= scenarios.length) {
-            targetPhraseEl.innerText = "All Clear! Good job!";
-            situationBox.innerText = "🎉";
+    function showChoices() {
+        if (currentStep >= steps.length) {
+            stepHintEl.innerText = "Final Phase: 全文を一度に言え！";
+            choicesEl.innerHTML = "--- FINAL CHECK ---";
+            statusEl.innerText = "全力で音読しろ！";
             return;
         }
-        const s = scenarios[currentIdx];
-        situationBox.innerText = s.emoji;
-        document.getElementById('instruction').innerText = s.hint;
-        targetPhraseEl.innerText = s.phrase;
-        feedbackEl.innerText = "";
-        feedbackEl.style.color = "black";
+        
+        stepHintEl.innerText = `Step ${currentStep + 1}: ${steps[currentStep].name}を選べ`;
+        choicesEl.innerHTML = '';
+        steps[currentStep].options.forEach(opt => {
+            const div = document.createElement('div');
+            div.className = 'choice active';
+            div.innerText = opt;
+            choicesEl.appendChild(div);
+        });
     }
 
-    startBtn.onclick = () => {
+    document.getElementById('mic-btn').onclick = () => {
         recognition.start();
         statusEl.innerText = "Listening...";
-        statusEl.className = "mic-active";
     };
 
     recognition.onresult = (event) => {
-        const speech = event.results[0][0].transcript.toLowerCase().replace(/[.,?!]/g, "");
-        const target = scenarios[currentIdx].phrase.toLowerCase().replace(/[.,?!]/g, "");
-        
+        const speech = event.results[0][0].transcript.toLowerCase();
         userSpeechEl.innerText = speech;
-        
-        // 判定ロジック（完全に一致しなくても、含まれていればOKにする）
-        if (speech.includes(target) || target.includes(speech)) {
-            feedbackEl.innerText = "Excellent! You helped them! ✅";
-            feedbackEl.style.color = "green";
-            currentIdx++;
-            setTimeout(nextScenario, 2000);
+
+        if (currentStep < steps.length) {
+            // 選択フェーズ
+            const matched = steps[currentStep].options.find(opt => 
+                speech.includes(opt.toLowerCase())
+            );
+
+            if (matched) {
+                builtSentence.push(matched);
+                sentenceEl.innerText = builtSentence.join(" ");
+                currentStep++;
+                showChoices();
+                statusEl.innerText = "Match! Next step.";
+            } else {
+                statusEl.innerText = "No match. Try again.";
+            }
         } else {
-            feedbackEl.innerText = "Pardon? Try again. ❌";
-            feedbackEl.style.color = "red";
+            // 最終確認フェーズ
+            const finalTarget = builtSentence.join(" ").toLowerCase().replace(/[.,?!]/g, "");
+            if (speech.includes(finalTarget)) {
+                sentenceEl.style.color = "#00ff00";
+                sentenceEl.innerText = "MISSION COMPLETE: " + builtSentence.join(" ");
+                statusEl.innerText = "Perfect Execution!";
+            } else {
+                statusEl.innerText = "Failed... Read the whole sentence again.";
+            }
         }
     };
 
-    recognition.onend = () => {
-        statusEl.innerText = "Stopped (Click button to talk again)";
-        statusEl.className = "";
-    };
-
-    nextScenario();
+    showChoices();
 </script>
 </body>
 </html>
